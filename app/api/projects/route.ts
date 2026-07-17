@@ -123,6 +123,17 @@ async function listProjects() {
   );
 }
 
+function checkEditAuth(request: Request): Response | null {
+  const required = process.env.RADAR_EDIT_PASSWORD;
+  if (!required) return null; // proteção desativada enquanto a variável não for definida
+  const provided = request.headers.get("x-edit-password") ?? "";
+  if (provided === required) return null;
+  return Response.json(
+    { error: "Senha de edição obrigatória ou incorreta." },
+    { status: 401 },
+  );
+}
+
 export async function GET() {
   try {
     await ensureSchema();
@@ -136,6 +147,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const authError = checkEditAuth(request);
+    if (authError) return authError;
     await ensureSchema();
     const project = normalizeProject((await request.json()) as ProjectInput);
     const db = getClient();
@@ -196,6 +209,8 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const authError = checkEditAuth(request);
+    if (authError) return authError;
     await ensureSchema();
     const payload = (await request.json()) as ProjectInput;
     if (!payload.id) throw new Error("Selecione um projeto para editar.");
@@ -261,6 +276,8 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const authError = checkEditAuth(request);
+    if (authError) return authError;
     await ensureSchema();
     const id = new URL(request.url).searchParams.get("id");
     if (!id) throw new Error("Selecione um projeto para excluir.");

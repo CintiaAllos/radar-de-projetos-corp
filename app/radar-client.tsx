@@ -211,6 +211,32 @@ export default function RadarClient() {
   const [businessAreaFilter, setBusinessAreaFilter] = useState("Todas as áreas");
   const [responsibleFilter, setResponsibleFilter] = useState("Todos os resp. técnicos");
   const [statusFilter, setStatusFilter] = useState("Todos os status");
+  const [editPassword, setEditPassword] = useState("");
+  const [pwdAsk, setPwdAsk] = useState<{ resolve: (value: string | null) => void } | null>(null);
+  const [pwdValue, setPwdValue] = useState("");
+
+  const askPassword = () =>
+    new Promise<string | null>((resolve) => {
+      setPwdValue("");
+      setPwdAsk({ resolve });
+    });
+  const submitPassword = () => { pwdAsk?.resolve(pwdValue); setPwdAsk(null); };
+  const cancelPassword = () => { pwdAsk?.resolve(null); setPwdAsk(null); };
+
+  const authedFetch = async (url: string, options: RequestInit) => {
+    const withPwd = (pwd: string): RequestInit => ({
+      ...options,
+      headers: { ...((options.headers as Record<string, string>) || {}), "x-edit-password": pwd },
+    });
+    let response = await fetch(url, withPwd(editPassword));
+    if (response.status === 401) {
+      const entered = await askPassword();
+      if (entered === null) return response;
+      setEditPassword(entered);
+      response = await fetch(url, withPwd(entered));
+    }
+    return response;
+  };
 
   const loadProjects = async () => {
     setLoading(true);
@@ -253,7 +279,7 @@ export default function RadarClient() {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/projects", {
+      const response = await authedFetch("/api/projects", {
         method: mode === "create" ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(project),
@@ -276,7 +302,7 @@ export default function RadarClient() {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`/api/projects?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const response = await authedFetch(`/api/projects?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const data = (await response.json()) as { projects?: Project[]; error?: string };
       if (!response.ok) throw new Error(data.error || "Não foi possível excluir o projeto.");
       setProjects(data.projects ?? []);
@@ -402,6 +428,26 @@ export default function RadarClient() {
         )}
       </main>
       {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
+      {pwdAsk && (
+        <div className="pwd-overlay" role="dialog" aria-modal="true" aria-label="Senha de edição">
+          <div className="pwd-card">
+            <h3>Senha de edição</h3>
+            <p>Para incluir, editar ou excluir, informe a senha.</p>
+            <input
+              type="password"
+              value={pwdValue}
+              autoFocus
+              placeholder="Senha"
+              onChange={(event) => setPwdValue(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") submitPassword(); if (event.key === "Escape") cancelPassword(); }}
+            />
+            <div className="pwd-actions">
+              <button type="button" className="ghost-button" onClick={cancelPassword}>Cancelar</button>
+              <button type="button" className="primary-button" onClick={submitPassword}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
