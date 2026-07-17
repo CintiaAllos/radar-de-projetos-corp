@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  CircleDashed,
   CircleDot,
   CirclePause,
   ClipboardList,
@@ -30,12 +31,49 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const STATUS_OPTIONS = [
+  "Não iniciado",
   "Em andamento",
   "Paralisado",
   "Impedido",
   "Concluído",
   "Atrasado",
   "Cancelado",
+] as const;
+
+const BUSINESS_AREAS = [
+  "ASSET Pricing",
+  "Cash & Funding",
+  "Compliance",
+  "Contabilidade",
+  "CSC Gestão de Serviços",
+  "Dados - Arquitetura",
+  "Dados - Governança",
+  "Dados – Débito Técnico",
+  "Desenvolvimento Novos Negócios",
+  "Desenvolvimento Obras",
+  "Gente & Performance",
+  "Gestão de Sócios",
+  "Hello",
+  "Infogen",
+  "Inteligência de Negócios",
+  "Jurídico",
+  "Operações – CAPEX",
+  "Operações – Condomínio",
+  "Operações – Estacionamento",
+  "Orçamento FP&A",
+  "Outros",
+  "Tesouraria",
+  "TI Corporativo",
+] as const;
+
+const RESPONSIBLES = [
+  "David",
+  "Fábio",
+  "Gabriel",
+  "Givanildo",
+  "Marcelo",
+  "Rizzetto",
+  "Ygor",
 ] as const;
 
 type Status = (typeof STATUS_OPTIONS)[number];
@@ -76,7 +114,7 @@ const EMPTY_PROJECT: Project = {
   endDate: "",
   responsible: "",
   stage: "Planejamento",
-  status: "Em andamento",
+  status: "Não iniciado",
   observations: "",
   actions: [],
 };
@@ -94,7 +132,7 @@ function newAction(project?: Project): ProjectAction {
     title: "",
     startDate: project?.startDate ?? "",
     endDate: project?.endDate ?? "",
-    status: "Em andamento",
+    status: "Não iniciado",
     progress: 0,
     observations: "",
   };
@@ -114,6 +152,28 @@ function projectProgress(project: Project) {
   return Math.round(project.actions.reduce((sum, action) => sum + action.progress, 0) / project.actions.length);
 }
 
+function plannedProgress(startDate: string, endDate: string): number | null {
+  if (!startDate || !endDate) return null;
+  const start = new Date(`${startDate}T12:00:00`).getTime();
+  const end = new Date(`${endDate}T12:00:00`).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const now = Date.now();
+  if (end <= start) return now >= start ? 100 : 0;
+  const pct = ((now - start) / (end - start)) * 100;
+  return Math.round(Math.min(100, Math.max(0, pct)));
+}
+
+function lastDataUpdate(projects: Project[]): string | null {
+  const times = projects
+    .map((project) => project.updatedAt || project.createdAt || "")
+    .map((value) => new Date(value).getTime())
+    .filter((time) => Number.isFinite(time));
+  if (!times.length) return null;
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
+    new Date(Math.max(...times)),
+  );
+}
+
 function statusClass(status: Status) {
   return `status-${status.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s/g, "-")}`;
 }
@@ -121,6 +181,8 @@ function statusClass(status: Status) {
 function StatusBadge({ status }: { status: Status }) {
   const Icon = status === "Cancelado"
     ? X
+    : status === "Não iniciado"
+    ? CircleDashed
     : status === "Concluído"
     ? CheckCircle2
     : status === "Paralisado"
@@ -328,6 +390,16 @@ export default function RadarClient() {
             )}
           </>
         )}
+        {!loading && (
+          <footer className="app-footer">
+            <div>
+              <Clock3 size={14} aria-hidden="true" />
+              {projects.length
+                ? `Última atualização dos dados: ${lastDataUpdate(projects) ?? "—"}`
+                : "Nenhum dado cadastrado ainda."}
+            </div>
+          </footer>
+        )}
       </main>
       {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
     </div>
@@ -447,7 +519,7 @@ function Dashboard({ projects, projectFilter, setProjectFilter, businessAreaFilt
     <div className="page-content dashboard-page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">PORTFÓLIO</span>
+          <span className="eyebrow">PORTFÓLIO DADOS CORPORATIVOS</span>
           <h1>Radar de Projetos</h1>
           <p>Acompanhe a saúde, os prazos e os próximos passos do portfólio.</p>
         </div>
@@ -552,10 +624,10 @@ function ProjectForm({ initial, mode, saving, submit, cancel }: { initial: Proje
         <div className="form-grid">
           <label className="field full"><span>Nome do projeto *</span><input value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Ex.: Evolução do Monitor de Notas" /></label>
           <label className="field full"><span>Objetivo</span><textarea value={draft.objective} onChange={(event) => update("objective", event.target.value)} rows={3} placeholder="Descreva o resultado que este projeto deve alcançar." /></label>
-          <label className="field full"><span>Área de Negócio</span><input value={draft.businessArea} onChange={(event) => update("businessArea", event.target.value)} placeholder="Ex.: Inteligência de Negócio" /></label>
+          <label className="field full"><span>Área de Negócio</span><select value={draft.businessArea} onChange={(event) => update("businessArea", event.target.value)}><option value="">Selecione a área</option>{draft.businessArea && !(BUSINESS_AREAS as readonly string[]).includes(draft.businessArea) ? <option value={draft.businessArea}>{draft.businessArea}</option> : null}{BUSINESS_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
           <label className="field"><span>Data inicial *</span><input type="date" value={draft.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
           <label className="field"><span>Data final *</span><input type="date" value={draft.endDate} min={draft.startDate} onChange={(event) => update("endDate", event.target.value)} /></label>
-          <label className="field"><span>Resp. Técnico *</span><input value={draft.responsible} onChange={(event) => update("responsible", event.target.value)} placeholder="Nome do responsável técnico" /></label>
+          <label className="field"><span>Resp. Técnico *</span><select value={draft.responsible} onChange={(event) => update("responsible", event.target.value)}><option value="">Selecione o responsável</option>{draft.responsible && !(RESPONSIBLES as readonly string[]).includes(draft.responsible) ? <option value={draft.responsible}>{draft.responsible}</option> : null}{RESPONSIBLES.map((person) => <option key={person}>{person}</option>)}</select></label>
           <label className="field"><span>Etapa atual</span><input value={draft.stage} onChange={(event) => update("stage", event.target.value)} placeholder="Ex.: Planejamento" /></label>
           <label className="field"><span>Status</span><select value={draft.status} onChange={(event) => update("status", event.target.value as Status)}>{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
           <label className="field full"><span>Observações</span><textarea value={draft.observations} onChange={(event) => update("observations", event.target.value)} rows={3} placeholder="Registre decisões, dependências ou informações relevantes." /></label>
@@ -564,19 +636,22 @@ function ProjectForm({ initial, mode, saving, submit, cancel }: { initial: Proje
       <section className="form-card actions-form-card">
         <div className="section-title action-title"><div><span>02</span><div><h2>Ações e datas</h2><p>Inclua as entregas que formarão o cronograma e o status report.</p></div></div><button type="button" className="secondary-button" onClick={() => update("actions", [...draft.actions, newAction(draft)])}><Plus size={18} />Adicionar ação</button></div>
         <div className="action-editor-list">
-          {draft.actions.map((action, index) => (
+          {draft.actions.map((action, index) => {
+            const planned = plannedProgress(action.startDate, action.endDate);
+            return (
             <article className="action-editor" key={action.id}>
               <div className="action-editor-head"><strong>Ação {index + 1}</strong><button type="button" onClick={() => update("actions", draft.actions.filter((item) => item.id !== action.id))} aria-label={`Remover ação ${index + 1}`}><Trash2 size={17} />Remover</button></div>
               <div className="action-form-grid">
                 <label className="field action-name"><span>Descrição da ação</span><input value={action.title} onChange={(event) => updateAction(action.id, "title", event.target.value)} placeholder="O que precisa ser realizado?" /></label>
                 <label className="field"><span>Início</span><input type="date" value={action.startDate} min={draft.startDate} max={draft.endDate || undefined} onChange={(event) => updateAction(action.id, "startDate", event.target.value)} /></label>
                 <label className="field"><span>Fim</span><input type="date" value={action.endDate} min={action.startDate || draft.startDate} max={draft.endDate || undefined} onChange={(event) => updateAction(action.id, "endDate", event.target.value)} /></label>
-                <label className="field"><span>Status da ação</span><select value={action.status} onChange={(event) => updateAction(action.id, "status", event.target.value as Status)}>{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
-                <label className="field progress-field"><span>Progresso: {action.progress}%</span><input type="range" min="0" max="100" step="1" value={action.progress} onChange={(event) => updateAction(action.id, "progress", Number(event.target.value))} /></label>
+                <label className="field"><span>Status da Ação</span><select value={action.status} onChange={(event) => updateAction(action.id, "status", event.target.value as Status)}>{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
+                <div className="field progress-field"><span>Progresso Atual: {action.progress}%</span><input type="range" min="0" max="100" step="1" value={action.progress} onChange={(event) => updateAction(action.id, "progress", Number(event.target.value))} /><span className="planned-label">Progresso Planejado: {planned === null ? "—" : `${planned}%`}</span><div className="planned-track" aria-hidden="true"><div style={{ width: `${planned ?? 0}%` }} /></div></div>
                 <label className="field full"><span>Observações da ação</span><input value={action.observations} onChange={(event) => updateAction(action.id, "observations", event.target.value)} placeholder="Dependências, impedimentos ou comentários." /></label>
               </div>
             </article>
-          ))}
+            );
+          })}
           {!draft.actions.length && <div className="empty-actions"><ClipboardList size={28} /><strong>Nenhuma ação cadastrada</strong><span>Use “Adicionar ação” para construir o cronograma.</span></div>}
         </div>
       </section>
@@ -601,23 +676,37 @@ function DeletePanel({ project, saving, cancel, confirm }: { project: Project; s
 }
 
 function Timeline({ project, capture = false }: { project: Project; capture?: boolean }) {
+  const dayMs = 86400000;
+  const weekMs = 7 * dayMs;
   const start = new Date(`${project.startDate}T12:00:00`).getTime();
-  const end = new Date(`${project.endDate}T12:00:00`).getTime();
-  const span = Math.max(1, end - start);
-  const markers = Array.from({ length: 7 }, (_, index) => new Date(start + (span * index) / 6));
+  const endRaw = new Date(`${project.endDate}T12:00:00`).getTime();
+  const safeStart = Number.isFinite(start) ? start : Date.now();
+  const safeEnd = Number.isFinite(endRaw) && endRaw >= safeStart ? endRaw : safeStart;
+  const totalDays = Math.max(1, Math.floor((safeEnd - safeStart) / dayMs) + 1);
+  const weekCount = Math.max(1, Math.ceil(totalDays / 7));
+  const span = weekCount * weekMs;
+  const fmtDM = (time: number) =>
+    new Date(time).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const weeks = Array.from({ length: weekCount }, (_, index) => {
+    const weekStart = safeStart + index * weekMs;
+    const weekEnd = Math.min(weekStart + 6 * dayMs, safeEnd);
+    return { key: weekStart, label: `${fmtDM(weekStart)} a ${fmtDM(weekEnd)}` };
+  });
   return (
     <section className={`timeline-card ${capture ? "capture-card" : ""}`}>
       <div className="report-topline"><div><span className="field-kicker">CRONOGRAMA DO PROJETO</span><h2>{project.name}</h2><p>{project.objective}</p></div><StatusBadge status={project.status} /></div>
       <div className="project-meta-row"><div><span>Área de Negócio</span><strong>{project.businessArea || "Não informada"}</strong></div><div><span>Resp. Técnico</span><strong>{project.responsible}</strong></div><div><span>Etapa</span><strong>{project.stage}</strong></div><div><span>Período</span><strong>{formatDate(project.startDate)} — {formatDate(project.endDate)}</strong></div><div><span>Progresso</span><strong>{projectProgress(project)}%</strong></div></div>
-      <div className="gantt-wrap">
-        <div className="gantt-header"><div>Ação</div><div className="gantt-dates">{markers.map((marker) => <span key={marker.toISOString()}>{marker.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(" de ", " ")}</span>)}</div></div>
+      <div className="gantt-wrap" style={{ ["--cols"]: weekCount } as React.CSSProperties}>
+        <div className="gantt-header"><div>Ação</div><div className="gantt-dates">{weeks.map((week) => <span key={week.key}>{week.label}</span>)}</div></div>
         <div className="gantt-body">
           {project.actions.map((action) => {
-            const actionStart = new Date(`${action.startDate}T12:00:00`).getTime();
-            const actionEnd = new Date(`${action.endDate}T12:00:00`).getTime();
-            const left = Math.max(0, Math.min(100, ((actionStart - start) / span) * 100));
-            const width = Math.max(3, Math.min(100 - left, ((actionEnd - actionStart) / span) * 100));
-            return <div className="gantt-row" key={action.id}><div className="gantt-label"><strong>{action.title}</strong><span>{action.progress}% • {action.status}</span></div><div className="gantt-track"><div className="gantt-grid-lines">{markers.map((marker) => <i key={marker.toISOString()} />)}</div><div className={`gantt-bar ${statusClass(action.status)}`} style={{ left: `${left}%`, width: `${width}%` }}><span>{action.progress}%</span></div></div></div>;
+            const rawActionStart = new Date(`${action.startDate}T12:00:00`).getTime();
+            const rawActionEnd = new Date(`${action.endDate}T12:00:00`).getTime();
+            const actionStart = Number.isFinite(rawActionStart) ? rawActionStart : safeStart;
+            const actionEnd = Number.isFinite(rawActionEnd) ? rawActionEnd : actionStart;
+            const left = Math.max(0, Math.min(100, ((actionStart - safeStart) / span) * 100));
+            const width = Math.max((dayMs / span) * 100, Math.min(100 - left, ((actionEnd - actionStart + dayMs) / span) * 100));
+            return <div className="gantt-row" key={action.id}><div className="gantt-label"><strong>{action.title}</strong><span>{action.progress}% • {action.status}</span></div><div className="gantt-track"><div className="gantt-grid-lines">{weeks.map((week) => <i key={week.key} />)}</div><div className={`gantt-bar ${statusClass(action.status)}`} style={{ left: `${left}%`, width: `${width}%` }}><span>{action.progress}%</span></div></div></div>;
           })}
         </div>
       </div>

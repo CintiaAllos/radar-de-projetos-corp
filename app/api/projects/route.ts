@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const VALID_STATUS = new Set([
+  "Não iniciado",
   "Em andamento",
   "Paralisado",
   "Impedido",
